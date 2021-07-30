@@ -16,10 +16,14 @@ import me.chanjar.weixin.mp.api.WxMpService;
 import me.chanjar.weixin.mp.bean.kefu.WxMpKefuMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -61,7 +65,11 @@ public class MsgReplyServiceImpl implements MsgReplyService {
             for (MsgReplyRule rule : rules) {
                 TaskExcutor.schedule(() -> {
                     wxMpService.switchover(appid);
-                    this.reply(toUser,rule.getReplyType(),rule.getReplyContent());
+                    if(rule.getReplyContent().startsWith("api:")){
+                        this.reply(toUser,rule.getReplyType(),getReplyContentFromApi(rule,toUser));
+                    }else {
+                        this.reply(toUser,rule.getReplyType(),rule.getReplyContent());
+                    }
                 }, delay, TimeUnit.MILLISECONDS);
                 delay += autoReplyInterval;
             }
@@ -70,6 +78,18 @@ public class MsgReplyServiceImpl implements MsgReplyService {
             log.error("自动回复出错：", e);
         }
         return false;
+    }
+
+    public String getReplyContentFromApi(MsgReplyRule rule,String toUser){
+        //content替换成get api的内容
+        String url=rule.getReplyContent();
+        url=url.replace("api:","").replace("{openid}",toUser);
+        //get调用api获取内容
+        RestTemplate restTemplate = new RestTemplate();
+        ResponseEntity<Map> response
+                = restTemplate.getForEntity(url , Map.class);
+        String replyContent= (String) response.getBody().get("data");
+        return  replyContent;
     }
 
     @Override
